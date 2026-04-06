@@ -1,36 +1,143 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Swiss AI Radar — AI Company Directory Switzerland
+
+A full-stack Next.js 14 application for discovering and exploring AI companies based in Switzerland. Filter by domain, canton, funding stage, and more.
+
+## Overview
+
+Swiss AI Radar is a comprehensive directory of 30+ Swiss AI companies with:
+- Advanced filtering by canton, AI domain, funding stage, and founded year
+- Card and table view modes
+- Company detail pages with funding history
+- Interactive charts showing domain distribution and funding stages
+- Canton-based company distribution map
+- Full-text search
+
+## Tech Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS v4
+- **Database**: Supabase (PostgreSQL)
+- **UI Components**: shadcn/ui
+- **Charts**: Recharts
+- **Icons**: Lucide React
 
 ## Getting Started
 
-First, run the development server:
+### 1. Clone and Install
+
+```bash
+git clone <repository-url>
+cd ai-company-radar
+npm install
+```
+
+### 2. Set Up Environment Variables
+
+Edit `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
+
+### 3. Set Up Supabase Database
+
+#### Create a Supabase Project
+
+1. Go to [supabase.com](https://supabase.com) and create a new project
+2. Copy your project URL and anon key into `.env.local`
+
+#### Run the Migration
+
+In the Supabase SQL Editor, run the contents of `supabase/migrations/001_initial_schema.sql`
+
+#### Seed the Database
+
+In the Supabase SQL Editor, run the contents of `supabase/seed.sql`
+
+### 4. Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | Yes |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key | Yes |
+| `NEXT_PUBLIC_SITE_URL` | The public URL of your site | No |
 
-## Learn More
+## Database Schema
 
-To learn more about Next.js, take a look at the following resources:
+The database consists of the following tables:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **companies** — Main company data (name, location, funding, etc.)
+- **ai_domains** — AI technology domains (NLP, Computer Vision, etc.)
+- **company_categories** — Company types (B2B SaaS, Deep Tech, etc.)
+- **company_tags** — Searchable tags for companies
+- **funding_rounds** — Individual funding round records
+- **company_domain_map** — Many-to-many: companies to domains
+- **company_category_map** — Many-to-many: companies to categories
+- **company_tag_map** — Many-to-many: companies to tags
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deployment
 
-## Deploy on Vercel
+### Deploy to Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm install -g vercel
+vercel --prod
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Or connect your GitHub repository to Vercel and it will auto-deploy.
+
+Make sure to add your environment variables in the Vercel project settings.
+
+## Project Structure
+
+```
+ai-company-radar/
+├── app/                    # Next.js App Router pages
+│   ├── api/                # API routes
+│   │   ├── companies/      # Companies endpoint
+│   │   └── stats/          # Statistics endpoint
+│   ├── companies/          # Companies directory page
+│   │   └── [slug]/         # Company detail page
+│   ├── layout.tsx          # Root layout
+│   ├── page.tsx            # Homepage
+│   └── globals.css         # Global styles
+├── components/             # React components
+│   ├── Navbar.tsx
+│   ├── CompanyCard.tsx
+│   ├── CompanyTable.tsx
+│   ├── FilterSidebar.tsx
+│   ├── FilterChips.tsx
+│   ├── FundingChart.tsx
+│   ├── DomainPieChart.tsx
+│   ├── CantonMap.tsx
+│   ├── StatsBar.tsx
+│   └── ...
+├── hooks/                  # Custom React hooks
+│   ├── useFilters.ts
+│   ├── useCompanies.ts
+│   └── useDebounce.ts
+├── lib/                    # Utilities and data layer
+│   ├── types.ts            # TypeScript interfaces
+│   ├── supabase.ts         # Supabase client
+│   ├── queries.ts          # Database queries
+│   ├── filters.ts          # Filter utilities
+│   └── utils.ts            # Helper functions
+└── supabase/               # Database files
+    ├── migrations/         # Schema migrations
+    └── seed.sql            # Seed data
+```
+
+## License
+
+MIT
