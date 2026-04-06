@@ -10,12 +10,7 @@ export async function getCompanies(filters: Partial<CompanyFilters>): Promise<Co
 
   let query = client
     .from('companies')
-    .select(`
-      *,
-      domains:company_domain_map(domain:ai_domains(*)),
-      categories:company_category_map(category:company_categories(*)),
-      tags:company_tag_map(tag:company_tags(*))
-    `, { count: 'exact' })
+    .select('*', { count: 'estimated' })
 
   if (filters.search) {
     query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
