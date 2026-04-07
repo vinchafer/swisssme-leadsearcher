@@ -10,6 +10,8 @@
     "setup-db": "ts-node -T scripts/setup-db.ts",
     "zefix-sync": "tsx scripts/zefix-sync.ts",
     "noga-match": "ts-node -T scripts/noga-matcher.ts",
+    "noga-match:v2": "tsx scripts/noga-matcher-v2.ts",
+    "noga-match:v2:test": "tsx scripts/noga-matcher-v2.ts --limit=20 --dry-run",
     "enrich-purpose-text": "tsx scripts/enrich-purpose-text.ts",
     "enrich-purpose-text:test": "tsx scripts/enrich-purpose-text.ts --limit=100 --dry-run"
   },
