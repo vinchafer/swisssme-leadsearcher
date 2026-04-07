@@ -1,142 +1,149 @@
-# Swiss AI Radar — AI Company Directory Switzerland
+# SwissSME Leadsearcher
 
-A full-stack Next.js 14 application for discovering and exploring AI companies based in Switzerland. Filter by domain, canton, funding stage, and more.
+Zentrale, automatisch aktualisierte Datenbank aller ~717k Schweizer Unternehmen mit maximaler Datenanreicherung.
 
-## Overview
+## Purpose
 
-Swiss AI Radar is a comprehensive directory of 30+ Swiss AI companies with:
-- Advanced filtering by canton, AI domain, funding stage, and founded year
-- Card and table view modes
-- Company detail pages with funding history
-- Interactive charts showing domain distribution and funding stages
-- Canton-based company distribution map
-- Full-text search
+Ein browserbasiertes Tool (Desktop + Mobile) das alle aktiven Schweizer Firmen aus dem offiziellen Handelsregister (Zefix) anzeigt und nach verschiedenen Kriterien filterbar macht.
+
+**Live:** https://ai-company-radar.vercel.app
+
+## Data Sources
+
+1. **Zefix CSV** (authoritative baseline)
+   - Alle 26 Kantone
+   - ~717k Unternehmen
+   - Täglicher Update vom Open Data Basel-Stadt
+
+2. **Zefix PublicREST API** (enrichment)
+   - Zweckbeschreibung (`purpose_text`)
+   - VRP Daten (later)
+
+3. **Groq LLM** (NOGA matching)
+   - `purpose_text` → NOGA 2008 Codes
+   - Confidence-based auto-assignment
+
+4. **Web Crawling** (future)
+   - LinkedIn URLs
+   - Mitarbeiterzahlen
+   - Logo URLs
+   - Website
 
 ## Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4
-- **Database**: Supabase (PostgreSQL)
-- **UI Components**: shadcn/ui
-- **Charts**: Recharts
-- **Icons**: Lucide React
+- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS, shadcn/ui, Recharts
+- **Backend:** Next.js API Routes, TypeScript
+- **Database:** Supabase (PostgreSQL)
+- **Hosting:** Vercel
+- **Scripts:** TypeScript (tsx/ts-node)
+
+## Project Structure
+
+```
+ai-company-radar/
+├── app/
+│   ├── api/
+│   │   ├── companies/          # List + search API
+│   │   ├── company/[uid]/      # Detail API
+│   │   └── cron/
+│   │       └── zefix-sync/     # Monthly auto-sync
+│   ├── companies/              # Frontend pages
+│   ├── admin/                  # Admin interface
+│   └── layout.tsx
+├── scripts/
+│   ├── zefix-sync.ts           # Import all 26 cantons
+│   ├── enrich-purpose-text.ts  # Zefix API enrichment
+│   ├── noga-matcher-v2.ts      # NOGA classification
+│   ├── setup-db.ts             # DB migrations
+│   └── seed.ts                 # Test data
+├── lib/
+│   ├── supabase.ts             # Supabase client
+│   ├── api-helpers.ts          # Shared utilities
+│   └── types.ts                # TypeScript types
+├── supabase/
+│   ├── migrations/             # DB schema
+│   └── seed.sql                # Seed data
+├── public/
+├── .env.local                  # Local env (git ignored)
+├── vercel.json                 # Vercel config + crons
+└── package.json
+```
 
 ## Getting Started
 
 ### 1. Clone and Install
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/vinchafer/swisssme-leadsearcher.git
 cd ai-company-radar
 npm install
 ```
 
-### 2. Set Up Environment Variables
+### 2. Environment Variables
 
-Edit `.env.local`:
+Copy `.env.example` to `.env.local` and fill in:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+GROQ_API_KEY=your_groq_api_key
+CRON_SECRET=your_cron_secret
 ```
 
-### 3. Set Up Supabase Database
+### 3. Database Setup
 
-#### Create a Supabase Project
+Run the migration in Supabase SQL Editor:
 
-1. Go to [supabase.com](https://supabase.com) and create a new project
-2. Copy your project URL and anon key into `.env.local`
+```bash
+# Or via CLI
+supabase db push
+```
 
-#### Run the Migration
+### 4. Import Data
 
-In the Supabase SQL Editor, run the contents of `supabase/migrations/001_initial_schema.sql`
+```bash
+# Import all 26 cantons from Zefix CSV
+npx tsx scripts/zefix-sync.ts
 
-#### Seed the Database
+# Enrich with purpose_text from Zefix API
+npm run enrich-purpose-text
 
-In the Supabase SQL Editor, run the contents of `supabase/seed.sql`
+# Run NOGA classification
+npx tsx scripts/noga-matcher-v2.ts
+```
 
-### 4. Run Development Server
+### 5. Run Dev Server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000)
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `zefix-sync.ts` | Imports all ~717k companies from Zefix CSV (26 cantons) |
+| `enrich-purpose-text.ts` | Fetches `purpose_text` from Zefix REST API |
+| `noga-matcher-v2.ts` | Classifies companies by NOGA 2008 via Groq LLM |
+| `setup-db.ts` | Creates/updates DB schema |
 
 ## Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | Yes |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key | Yes |
-| `NEXT_PUBLIC_SITE_URL` | The public URL of your site | No |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Yes |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key | Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role (scripts) | Yes |
+| `GROQ_API_KEY` | Groq API key for NOGA matching | Yes |
+| `CRON_SECRET` | Secret for Vercel cron auth | Yes |
 
-## Database Schema
+## Cron Jobs
 
-The database consists of the following tables:
-
-- **companies** — Main company data (name, location, funding, etc.)
-- **ai_domains** — AI technology domains (NLP, Computer Vision, etc.)
-- **company_categories** — Company types (B2B SaaS, Deep Tech, etc.)
-- **company_tags** — Searchable tags for companies
-- **funding_rounds** — Individual funding round records
-- **company_domain_map** — Many-to-many: companies to domains
-- **company_category_map** — Many-to-many: companies to categories
-- **company_tag_map** — Many-to-many: companies to tags
-
-## Deployment
-
-### Deploy to Vercel
-
-```bash
-npm install -g vercel
-vercel --prod
-```
-
-Or connect your GitHub repository to Vercel and it will auto-deploy.
-
-Make sure to add your environment variables in the Vercel project settings.
-
-## Project Structure
-
-```
-ai-company-radar/
-├── app/                    # Next.js App Router pages
-│   ├── api/                # API routes
-│   │   ├── companies/      # Companies endpoint
-│   │   └── stats/          # Statistics endpoint
-│   ├── companies/          # Companies directory page
-│   │   └── [slug]/         # Company detail page
-│   ├── layout.tsx          # Root layout
-│   ├── page.tsx            # Homepage
-│   └── globals.css         # Global styles
-├── components/             # React components
-│   ├── Navbar.tsx
-│   ├── CompanyCard.tsx
-│   ├── CompanyTable.tsx
-│   ├── FilterSidebar.tsx
-│   ├── FilterChips.tsx
-│   ├── FundingChart.tsx
-│   ├── DomainPieChart.tsx
-│   ├── CantonMap.tsx
-│   ├── StatsBar.tsx
-│   └── ...
-├── hooks/                  # Custom React hooks
-│   ├── useFilters.ts
-│   ├── useCompanies.ts
-│   └── useDebounce.ts
-├── lib/                    # Utilities and data layer
-│   ├── types.ts            # TypeScript interfaces
-│   ├── supabase.ts         # Supabase client
-│   ├── queries.ts          # Database queries
-│   ├── filters.ts          # Filter utilities
-│   └── utils.ts            # Helper functions
-└── supabase/               # Database files
-    ├── migrations/         # Schema migrations
-    └── seed.sql            # Seed data
-```
+Configured in `vercel.json` — runs monthly:
+- `GET /api/cron/zefix-sync` — syncs latest Zefix data
 
 ## License
 

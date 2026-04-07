@@ -41,3 +41,8 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# local scripts + claude config
+.claude/
+run-enrichment.ps1
+*.ps1
