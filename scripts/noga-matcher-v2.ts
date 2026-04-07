@@ -74,6 +74,7 @@ interface Company {
 
 interface MatchResult {
   noga_code: string | null
+  noga_label_de?: string
   confidence: number
   reason?: string
   source: 'groq' | 'keyword_fallback'
@@ -299,11 +300,11 @@ async function applyMatches(
     await client.query(
       `UPDATE companies SET
          noga_code        = $2,
-         noga_label_de    = (SELECT label_de FROM noga_codes WHERE code = $2 LIMIT 1),
-         noga_confidence  = $3,
+         noga_label_de    = $3,
+         noga_confidence  = $4,
          noga_matched_at  = NOW()
        WHERE id = $1`,
-      [company.id, match.noga_code, match.confidence],
+      [company.id, match.noga_code, match.noga_label_de ?? null, match.confidence],
     )
   }
 }
@@ -347,93 +348,96 @@ async function main(): Promise<void> {
   let groqFailed = 0
   let keywordFallback = 0
 
-  // Process in batches of batchSize (parallel Groq calls)
-  for (let i = 0; i < companies.length; i += batchSize) {
-    const batch = companies.slice(i, i + batchSize)
-    const updates: Array<{ company: Company; match: MatchResult }> = []
+  // Process sequentially — 2s delay between Groq calls stays under free-tier 30 RPM limit
+  const updates: Array<{ company: Company; match: MatchResult }> = []
 
-    // Parallel Groq calls for this batch
-    await Promise.all(
-      batch.map(async (company) => {
-        const text = [company.purpose_text, company.description, company.name]
-          .filter(Boolean)
-          .join(' ')
+  for (let i = 0; i < companies.length; i++) {
+    const company = companies[i]
+    const text = [company.purpose_text, company.description, company.name]
+      .filter(Boolean)
+      .join(' ')
 
-        const candidates = getTopCandidates(text, nogaCodes, nogaTokenMap, 8)
-        const prompt = buildPrompt(company, candidates)
+    const candidates = getTopCandidates(text, nogaCodes, nogaTokenMap, 8)
+    const prompt = buildPrompt(company, candidates)
 
-        let result: MatchResult | null = null
+    let result: MatchResult | null = null
 
-        if (!dryRun) {
-          const groqResult = await callGroq(prompt)
-          if (groqResult?.noga_code) {
-            result = {
-              noga_code: groqResult.noga_code,
-              confidence: groqResult.confidence,
-              reason: groqResult.reason,
-              source: 'groq',
-            }
-          } else {
-            groqFailed++
-            // Fallback to keyword match
-            if (candidates.length > 0 && candidates[0].score >= 0.15) {
-              result = {
-                noga_code: candidates[0].code.code,
-                confidence: candidates[0].score,
-                source: 'keyword_fallback',
-              }
-              keywordFallback++
-            }
-          }
-        } else {
-          // Dry run: show what would happen
-          if (candidates.length > 0) {
-            log(
-              `  [DRY] ${company.name.slice(0, 50).padEnd(50)} → ${candidates[0].code.code} ${candidates[0].code.label_de.slice(0, 40)} (kw: ${candidates[0].score.toFixed(3)})`,
-            )
-            result = {
-              noga_code: candidates[0].code.code,
-              confidence: candidates[0].score,
-              source: 'keyword_fallback',
-            }
-          }
+    if (!dryRun) {
+      const groqResult = await callGroq(prompt)
+      if (groqResult?.noga_code) {
+        // Validate the returned code exists in our list
+        const matchedNoga = nogaCodes.find((n) => n.code === groqResult.noga_code)
+        result = {
+          noga_code: groqResult.noga_code,
+          noga_label_de: matchedNoga?.label_de,
+          confidence: groqResult.confidence,
+          reason: groqResult.reason,
+          source: 'groq',
         }
-
-        if (result?.noga_code && result.confidence >= minConfidence) {
-          updates.push({ company, match: result })
-          matched++
-        } else {
-          skipped++
+      } else {
+        groqFailed++
+        // Fallback to top keyword candidate
+        if (candidates.length > 0 && candidates[0].score >= 0.15) {
+          result = {
+            noga_code: candidates[0].code.code,
+            noga_label_de: candidates[0].code.label_de,
+            confidence: candidates[0].score,
+            source: 'keyword_fallback',
+          }
+          keywordFallback++
         }
-        processed++
-      }),
-    )
-
-    // Batch DB write
-    if (!dryRun && updates.length > 0) {
-      try {
-        await applyMatches(client, updates)
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err)
-        log(`  ⚠️  Batch write error: ${msg.slice(0, 100)}`)
+      }
+    } else {
+      if (candidates.length > 0) {
+        log(
+          `  [DRY] ${company.name.slice(0, 50).padEnd(50)} → ${candidates[0].code.code} ${candidates[0].code.label_de.slice(0, 40)} (kw: ${candidates[0].score.toFixed(3)})`,
+        )
+        result = {
+          noga_code: candidates[0].code.code,
+          noga_label_de: candidates[0].code.label_de,
+          confidence: candidates[0].score,
+          source: 'keyword_fallback',
+        }
       }
     }
 
-    // Progress log every batch
-    const elapsed = (Date.now() - startTime) / 1000
-    const rate = processed / elapsed
-    const remaining = companies.length - processed
-    const etaMin = rate > 0 ? Math.round(remaining / rate / 60) : 0
-    const pct = ((processed / companies.length) * 100).toFixed(1)
+    if (result?.noga_code && result.confidence >= minConfidence) {
+      updates.push({ company, match: result })
+      matched++
+    } else {
+      skipped++
+    }
+    processed++
 
-    log(
-      `  ⏳  ${processed.toLocaleString('de-CH')}/${companies.length.toLocaleString('de-CH')} (${pct}%) | ✅ ${matched} matched | ⚠️ ${groqFailed} groq-fail | ↩️ ${keywordFallback} keyword-fb | ETA: ${etaMin}min`,
-    )
+    // Write to DB every batchSize companies
+    if (!dryRun && (updates.length >= batchSize || i === companies.length - 1)) {
+      if (updates.length > 0) {
+        try {
+          await applyMatches(client, updates)
+          updates.length = 0
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err)
+          log(`  ⚠️  Batch write error: ${msg.slice(0, 100)}`)
+          updates.length = 0
+        }
+      }
+    }
 
-    // Rate limiting: small delay between batches to avoid 429
-    // Groq free tier: ~30 RPM for llama-3.3-70b → ~2s between 10 parallel calls
-    if (!dryRun && i + batchSize < companies.length) {
-      await sleep(2500)
+    // Progress log every batchSize companies
+    if (processed % batchSize === 0 || i === companies.length - 1) {
+      const elapsed = (Date.now() - startTime) / 1000
+      const rate = processed / elapsed
+      const remaining = companies.length - processed
+      const etaMin = rate > 0 ? Math.round(remaining / rate / 60) : 0
+      const pct = ((processed / companies.length) * 100).toFixed(1)
+      log(
+        `  ⏳  ${processed.toLocaleString('de-CH')}/${companies.length.toLocaleString('de-CH')} (${pct}%) | ✅ ${matched} matched | ⚠️ ${groqFailed} groq-fail | ↩️ ${keywordFallback} keyword-fb | ETA: ${etaMin}min`,
+      )
+    }
+
+    // 2s between Groq calls → ~30 RPM, within free-tier limit
+    if (!dryRun && i < companies.length - 1) {
+      await sleep(2000)
     }
   }
 
